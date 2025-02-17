@@ -5,19 +5,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/dropsite-ai/config"
 	"gopkg.in/yaml.v2"
 )
 
-// Config is an example configuration struct used by the CLI.
-type Config struct {
-	Secret string `yaml:"secret"`
-	Path   string `yaml:"path"`
-	User   string `yaml:"user"`
-	URL    string `yaml:"url"`
-}
-
+// usage prints the CLI usage.
 func usage() {
 	fmt.Println(`Usage: config <command> [options]
 
@@ -25,12 +19,9 @@ Commands:
   load      Load a YAML config from file (creates file if not exists)
               -file string   Path to config file
 
-  save      Save a YAML config to file
-              -file string   Path to config file
-              -secret string Secret value
-              -path string   Path value (will be expanded)
-              -user string   Username (validated)
-              -url string    URL (validated)
+  save      Save/update a YAML config file.
+              -file string    Path to config file
+              -update string  Update a field in the form key=value (can be repeated)
 
   process   Process a YAML config from file and print the processed result
               -file string   Path to config file
@@ -49,13 +40,26 @@ Commands:
               -srcField string Source field name
               -dst string      Destination config file
               -dstField string Destination field name`)
+	os.Exit(1)
+}
+
+// updateFlag is a custom flag type that collects repeated -update flags.
+type updateFlag []string
+
+func (u *updateFlag) String() string {
+	return fmt.Sprintf("%v", *u)
+}
+
+func (u *updateFlag) Set(value string) error {
+	*u = append(*u, value)
+	return nil
 }
 
 func main() {
 	if len(os.Args) < 2 {
 		usage()
-		os.Exit(1)
 	}
+
 	command := os.Args[1]
 	switch command {
 	case "load":
@@ -74,7 +78,6 @@ func main() {
 		copyCmd(os.Args[2:])
 	default:
 		usage()
-		os.Exit(1)
 	}
 }
 
@@ -89,14 +92,9 @@ func loadCmd(args []string) {
 		fs.Usage()
 		os.Exit(1)
 	}
-	// Define a default config.
-	defaultCfg := Config{
-		Secret: "",
-		Path:   "~/default/path",
-		User:   "defaultuser",
-		URL:    "http://example.com",
-	}
-	cfg, err := config.Load[Config](*file, defaultCfg)
+	// For a generic config, use a map as default.
+	defaultCfg := make(map[string]interface{})
+	cfg, err := config.Load[map[string]interface{}](*file, defaultCfg)
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
@@ -107,27 +105,39 @@ func loadCmd(args []string) {
 	fmt.Println(string(data))
 }
 
-// saveCmd saves a configuration provided via flags to a YAML file.
+// saveCmd loads an existing YAML config (or creates a default empty one),
+// applies one or more field updates (using -update key=value flags),
+// processes the config, and saves it.
 func saveCmd(args []string) {
 	fs := flag.NewFlagSet("save", flag.ExitOnError)
 	file := fs.String("file", "", "Path to config file")
-	secret := fs.String("secret", "", "Secret value")
-	pathVal := fs.String("path", "", "Path value")
-	user := fs.String("user", "", "Username")
-	urlVal := fs.String("url", "", "URL")
+	var updates updateFlag
+	fs.Var(&updates, "update", "Update a field in the form key=value (can be repeated)")
 	fs.Parse(args)
 	if *file == "" {
 		fmt.Println("Please provide -file")
 		fs.Usage()
 		os.Exit(1)
 	}
-	cfg := Config{
-		Secret: *secret,
-		Path:   *pathVal,
-		User:   *user,
-		URL:    *urlVal,
+
+	// Default config is an empty map.
+	defaultCfg := make(map[string]interface{})
+	cfg, err := config.Load[map[string]interface{}](*file, defaultCfg)
+	if err != nil {
+		log.Fatalf("Error loading config: %v", err)
 	}
-	// Process the config to apply custom logic (expanding paths, generating secrets, etc.).
+
+	// Process each update flag.
+	for _, upd := range updates {
+		parts := strings.SplitN(upd, "=", 2)
+		if len(parts) != 2 {
+			log.Fatalf("Invalid update format %q. Expected key=value", upd)
+		}
+		key, value := parts[0], parts[1]
+		cfg[key] = value
+	}
+
+	// Process the config (if any processing is defined, else this is a no-op for maps).
 	if err := config.Process(&cfg); err != nil {
 		log.Fatalf("Error processing config: %v", err)
 	}
@@ -147,14 +157,8 @@ func processCmd(args []string) {
 		fs.Usage()
 		os.Exit(1)
 	}
-	// Use the same default as for load.
-	defaultCfg := Config{
-		Secret: "",
-		Path:   "~/default/path",
-		User:   "defaultuser",
-		URL:    "http://example.com",
-	}
-	cfg, err := config.Load[Config](*file, defaultCfg)
+	defaultCfg := make(map[string]interface{})
+	cfg, err := config.Load[map[string]interface{}](*file, defaultCfg)
 	if err != nil {
 		log.Fatalf("Error processing config: %v", err)
 	}
@@ -223,6 +227,7 @@ func validateCmd(args []string) {
 }
 
 // copyCmd copies a property from one YAML config to another.
+// Because the generic config is a map, we handle this without the struct-based CopyProperty.
 func copyCmd(args []string) {
 	fs := flag.NewFlagSet("copy", flag.ExitOnError)
 	srcFile := fs.String("src", "", "Source config file")
@@ -235,23 +240,22 @@ func copyCmd(args []string) {
 		fs.Usage()
 		os.Exit(1)
 	}
-	// Load source config.
-	defaultSrc := Config{}
-	srcCfg, err := config.Load[Config](*srcFile, defaultSrc)
+	defaultCfg := make(map[string]interface{})
+	srcCfg, err := config.Load[map[string]interface{}](*srcFile, defaultCfg)
 	if err != nil {
 		log.Fatalf("Error loading source config: %v", err)
 	}
-	// Load destination config.
-	defaultDst := Config{}
-	dstCfg, err := config.Load[Config](*dstFile, defaultDst)
+	dstCfg, err := config.Load[map[string]interface{}](*dstFile, defaultCfg)
 	if err != nil {
 		log.Fatalf("Error loading destination config: %v", err)
 	}
-	// Copy the property.
-	if err := config.CopyProperty(&srcCfg, *srcField, &dstCfg, *dstField); err != nil {
-		log.Fatalf("Error copying property: %v", err)
+
+	val, ok := srcCfg[*srcField]
+	if !ok {
+		log.Fatalf("Field %q not found in source config", *srcField)
 	}
-	// Save the updated destination config.
+	dstCfg[*dstField] = val
+
 	if err := config.Save(*dstFile, dstCfg); err != nil {
 		log.Fatalf("Error saving destination config: %v", err)
 	}
