@@ -48,7 +48,7 @@ release:
 
 brews:
   - name: config
-    url_template: "https://github.com/dropsite-ai/llmfs/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    url_template: "https://github.com/dropsite-ai/config/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     url_headers:
       - "Accept: application/octet-stream"
     commit_author:
