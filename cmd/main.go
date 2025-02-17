@@ -19,15 +19,13 @@ type Config struct {
 }
 
 func usage() {
-	fmt.Println(`Usage: llmfs-config <command> [options]
+	fmt.Println(`Usage: config <command> [options]
 
 Commands:
   load      Load a YAML config from file (creates file if not exists)
-            Options:
               -file string   Path to config file
 
   save      Save a YAML config to file
-            Options:
               -file string   Path to config file
               -secret string Secret value
               -path string   Path value (will be expanded)
@@ -35,22 +33,18 @@ Commands:
               -url string    URL (validated)
 
   process   Process a YAML config from file and print the processed result
-            Options:
               -file string   Path to config file
 
   generate  Generate a JWT secret and print it
 
   expand    Expand a given path (handles "~")
-            Options:
               -path string   Path to expand
 
   validate  Validate a value as username or URL
-            Options:
               -type string   "username" or "url"
               -value string  Value to validate
 
   copy      Copy a property from one YAML config to another
-            Options:
               -src string      Source config file
               -srcField string Source field name
               -dst string      Destination config file
