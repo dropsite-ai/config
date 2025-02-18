@@ -94,7 +94,7 @@ func loadCmd(args []string) {
 	}
 	// For a generic config, use a map as default.
 	defaultCfg := make(map[string]interface{})
-	cfg, err := config.Load[map[string]interface{}](*file, defaultCfg)
+	cfg, err := config.Load(*file, defaultCfg)
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
@@ -122,7 +122,7 @@ func saveCmd(args []string) {
 
 	// Default config is an empty map.
 	defaultCfg := make(map[string]interface{})
-	cfg, err := config.Load[map[string]interface{}](*file, defaultCfg)
+	cfg, err := config.Load(*file, defaultCfg)
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
@@ -158,7 +158,7 @@ func processCmd(args []string) {
 		os.Exit(1)
 	}
 	defaultCfg := make(map[string]interface{})
-	cfg, err := config.Load[map[string]interface{}](*file, defaultCfg)
+	cfg, err := config.Load(*file, defaultCfg)
 	if err != nil {
 		log.Fatalf("Error processing config: %v", err)
 	}
@@ -241,11 +241,11 @@ func copyCmd(args []string) {
 		os.Exit(1)
 	}
 	defaultCfg := make(map[string]interface{})
-	srcCfg, err := config.Load[map[string]interface{}](*srcFile, defaultCfg)
+	srcCfg, err := config.Load(*srcFile, defaultCfg)
 	if err != nil {
 		log.Fatalf("Error loading source config: %v", err)
 	}
-	dstCfg, err := config.Load[map[string]interface{}](*dstFile, defaultCfg)
+	dstCfg, err := config.Load(*dstFile, defaultCfg)
 	if err != nil {
 		log.Fatalf("Error loading destination config: %v", err)
 	}
