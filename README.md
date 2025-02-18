@@ -9,6 +9,12 @@ A flexible YAML configuration utility for Go, with optional CLI usage. This repo
 
 ## Installation
 
+### Go Package
+
+```bash
+go get github.com/dropsite-ai/config
+```
+
 ### Homebrew (macOS or Compatible)
 
 ```bash
