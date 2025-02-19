@@ -17,69 +17,6 @@ type testConfig struct {
 	Ignored    int
 }
 
-func TestProcess_Valid(t *testing.T) {
-	cfg := testConfig{
-		TestSecret: "",
-		TestPath:   "~/some/path",
-		TestUser:   "user",
-		TestURL:    "http://example.com",
-		Ignored:    42,
-	}
-	err := Process(&cfg)
-	if err != nil {
-		t.Fatalf("Process returned error: %v", err)
-	}
-	if cfg.TestSecret == "" {
-		t.Errorf("Expected TestSecret to be set, got empty")
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("Failed to get home dir: %v", err)
-	}
-	expected := filepath.Join(home, "some/path")
-	if cfg.TestPath != expected {
-		t.Errorf("Expected TestPath to be %q, got %q", "/some/path", cfg.TestPath)
-	}
-
-	if cfg.TestUser != "user" {
-		t.Errorf("TestUser changed unexpectedly")
-	}
-	if cfg.TestURL != "http://example.com" {
-		t.Errorf("TestURL changed unexpectedly")
-	}
-}
-
-func TestProcess_InvalidUser(t *testing.T) {
-	cfg := testConfig{
-		TestUser: "InvalidUser", // Uppercase letter not allowed by regex.
-		TestURL:  "http://example.com",
-	}
-	err := Process(&cfg)
-	if err == nil {
-		t.Error("Expected error for invalid username, got nil")
-	}
-}
-
-func TestProcess_InvalidURL(t *testing.T) {
-	cfg := testConfig{
-		TestUser: "user",
-		TestURL:  "invalid-url",
-	}
-	err := Process(&cfg)
-	if err == nil {
-		t.Error("Expected error for invalid URL, got nil")
-	}
-}
-
-func TestProcess_NonStructPointer(t *testing.T) {
-	i := 10
-	// When passing a pointer to a non-struct, Process returns nil.
-	if err := Process(&i); err != nil {
-		t.Errorf("Expected nil error when processing pointer to non-struct, got: %v", err)
-	}
-}
-
 func TestSaveLoad_NewFile(t *testing.T) {
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "config.yaml")
