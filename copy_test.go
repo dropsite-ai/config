@@ -1,62 +1,141 @@
 package config
 
-import "testing"
+import (
+	"testing"
+)
 
-type srcStruct struct {
-	FieldA string
-	FieldB int
+type Credentials struct {
+	APIKey string
+	Secret string
 }
 
-type dstStruct struct {
-	FieldX string
-	FieldY int
+type NestedConfig struct {
+	Credentials Credentials
+	Count       int
 }
 
-func TestCopyProperty_Valid(t *testing.T) {
-	src := srcStruct{
-		FieldA: "hello",
-		FieldB: 42,
+type Config struct {
+	Variables NestedConfig
+	Name      string
+}
+
+func TestCopyProperty_ValidNested(t *testing.T) {
+	src := Config{
+		Variables: NestedConfig{
+			Credentials: Credentials{
+				APIKey: "my-api-key",
+				Secret: "my-secret",
+			},
+			Count: 42,
+		},
+		Name: "source",
 	}
-	dst := dstStruct{}
-	if err := CopyProperty(&src, "FieldA", &dst, "FieldX"); err != nil {
-		t.Fatalf("CopyProperty returned error: %v", err)
+	dst := Config{
+		Variables: NestedConfig{
+			Credentials: Credentials{
+				APIKey: "",
+				Secret: "",
+			},
+			Count: 0,
+		},
+		Name: "dest",
 	}
-	if dst.FieldX != "hello" {
-		t.Errorf("Expected dst.FieldX to be %q, got %q", "hello", dst.FieldX)
+
+	// Copy a nested string field.
+	err := CopyProperty(&src, "Variables.Credentials.APIKey", &dst, "Variables.Credentials.APIKey")
+	if err != nil {
+		t.Fatalf("Unexpected error copying nested field: %v", err)
 	}
-	// Also copy an int field.
-	if err := CopyProperty(&src, "FieldB", &dst, "FieldY"); err != nil {
-		t.Fatalf("CopyProperty returned error: %v", err)
+	if dst.Variables.Credentials.APIKey != "my-api-key" {
+		t.Errorf("Expected APIKey to be 'my-api-key', got %q", dst.Variables.Credentials.APIKey)
 	}
-	if dst.FieldY != 42 {
-		t.Errorf("Expected dst.FieldY to be 42, got %d", dst.FieldY)
+
+	// Copy a nested int field.
+	err = CopyProperty(&src, "Variables.Count", &dst, "Variables.Count")
+	if err != nil {
+		t.Fatalf("Unexpected error copying nested field: %v", err)
+	}
+	if dst.Variables.Count != 42 {
+		t.Errorf("Expected Count to be 42, got %d", dst.Variables.Count)
 	}
 }
 
 func TestCopyProperty_InvalidSourceField(t *testing.T) {
-	src := srcStruct{FieldA: "test"}
-	dst := dstStruct{}
-	err := CopyProperty(&src, "NonExistent", &dst, "FieldX")
+	src := Config{
+		Variables: NestedConfig{
+			Credentials: Credentials{
+				APIKey: "my-api-key",
+				Secret: "my-secret",
+			},
+			Count: 42,
+		},
+		Name: "source",
+	}
+	dst := Config{}
+
+	// Attempt to copy from a non-existent source field.
+	err := CopyProperty(&src, "Variables.Credentials.NonExistent", &dst, "Variables.Credentials.APIKey")
 	if err == nil {
-		t.Error("Expected error when source field does not exist")
+		t.Error("Expected error for invalid source field, got nil")
 	}
 }
 
 func TestCopyProperty_InvalidDestinationField(t *testing.T) {
-	src := srcStruct{FieldA: "test"}
-	dst := dstStruct{}
-	err := CopyProperty(&src, "FieldA", &dst, "NonExistent")
+	src := Config{
+		Variables: NestedConfig{
+			Credentials: Credentials{
+				APIKey: "my-api-key",
+				Secret: "my-secret",
+			},
+			Count: 42,
+		},
+		Name: "source",
+	}
+	dst := Config{}
+
+	// Attempt to copy to a non-existent destination field.
+	err := CopyProperty(&src, "Variables.Credentials.APIKey", &dst, "Variables.Credentials.NonExistent")
 	if err == nil {
-		t.Error("Expected error when destination field does not exist")
+		t.Error("Expected error for invalid destination field, got nil")
 	}
 }
 
 func TestCopyProperty_TypeMismatch(t *testing.T) {
-	// Attempt to copy an int into a string.
-	src := srcStruct{FieldB: 100}
-	dst := dstStruct{}
-	err := CopyProperty(&src, "FieldB", &dst, "FieldX")
+	src := Config{
+		Variables: NestedConfig{
+			Credentials: Credentials{
+				APIKey: "my-api-key",
+				Secret: "my-secret",
+			},
+			Count: 42,
+		},
+		Name: "source",
+	}
+	dst := Config{
+		Variables: NestedConfig{
+			Credentials: Credentials{
+				APIKey: "",
+				Secret: "",
+			},
+			Count: 0,
+		},
+		Name: "dest",
+	}
+
+	// Attempt to copy an int field into a string field.
+	err := CopyProperty(&src, "Variables.Count", &dst, "Variables.Credentials.APIKey")
 	if err == nil {
-		t.Error("Expected error due to type mismatch")
+		t.Error("Expected error due to type mismatch, got nil")
+	}
+}
+
+func TestCopyProperty_NonStructInput(t *testing.T) {
+	// Passing a non-struct pointer should return an error.
+	type NonStruct int
+	var ns NonStruct = 5
+	dst := Config{}
+	err := CopyProperty(&ns, "NonExistent", &dst, "Variables.Credentials.APIKey")
+	if err == nil {
+		t.Error("Expected error for non-struct source, got nil")
 	}
 }

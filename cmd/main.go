@@ -37,9 +37,9 @@ Commands:
 
   copy      Copy a property from one YAML config to another
               -src string      Source config file
-              -srcField string Source field name
+              -srcField string Source field name (supports nested dot‑notation)
               -dst string      Destination config file
-              -dstField string Destination field name`)
+              -dstField string Destination field name (supports nested dot‑notation)`)
 	os.Exit(1)
 }
 

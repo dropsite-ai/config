@@ -50,50 +50,75 @@ import "github.com/dropsite-ai/config"
 
 #### Defining Your Config Struct
 
-You can define a struct for your config. Any field ending with `Secret`, `Path`, `User`, or `URL` receives special processing:
-
-- **Secret**: If empty, generates a new random JWT secret (hex-encoded).
-- **Path**: Expands `~` to the user’s home directory.
-- **User**: Validates it against a simple Linux-style username rule.
-- **URL**: Validates the string as a well-formed URL.
+To take advantage of automatic processing, structure your configuration to include a dedicated `variables` section. Within this section you can define maps for endpoints, secrets, users, and paths:
 
 ```go
+type Variables struct {
+    Endpoints map[string]string `yaml:"endpoints"`
+    Secrets   map[string]string `yaml:"secrets"`
+    Users     map[string]string `yaml:"users"`
+    Paths     map[string]string `yaml:"paths"`
+}
+
 type MyAppConfig struct {
-    DBUser   string // Will be validated if the field name ends with "User"
-    DBURL    string // Will be validated if the field name ends with "URL"
-    AppPath  string // Will be expanded if the field name ends with "Path"
-    APISecret string // Will be auto-generated if empty (ends with "Secret")
+    Variables Variables `yaml:"variables"`
+    LogLevel  string    `yaml:"logLevel"`
 }
 ```
 
-> **Note**: If you don't need struct-based reflection or processing, you can also load into a `map[string]interface{}` or any generic type.
+#### YAML Configuration Example
+
+```yaml
+variables:
+  endpoints:
+    user: http://localhost:9000/callback
+  secrets:
+    root: ""
+  users:
+    owner: root
+  paths:
+    database: ~/llmfs.db
+logLevel: debug
+```
+
+In this configuration:
+
+- **endpoints:** Each value is validated as a well-formed URL.
+- **secrets:** Any empty secret value is replaced with a newly generated 32-byte JWT secret (hex-encoded).
+- **users:** Each value is validated as a Linux-style username.
+- **paths:** Each value is expanded (e.g. a leading `~` is replaced with the user’s home directory).
+
+> **Note:** If your configuration does not include a `variables` section, then these automatic validations and transformations are not applied. You can still use helper functions (such as `ExpandPath` or `ValidateUsername`) manually.
 
 #### Loading a Config File
 
 ```go
 // Default config if file doesn't exist:
 defaultCfg := MyAppConfig{
-    DBUser:    "defaultuser",
-    DBURL:     "https://example.com",
-    AppPath:   "~/myapp",
-    APISecret: "",
+    LogLevel: "info",
+    Variables: Variables{
+        Endpoints: map[string]string{"user": "http://localhost:9000/callback"},
+        Secrets:   map[string]string{"root": ""},
+        Users:     map[string]string{"owner": "root"},
+        Paths:     map[string]string{"database": "~/llmfs.db"},
+    },
 }
 
 // Load or create the YAML file:
-cfg, err := config.Load[MyAppConfig]("config.yaml", defaultCfg)
+cfg, err := config.Load("config.yaml", defaultCfg)
 if err != nil {
     panic(err)
 }
 ```
 
 - If `config.yaml` does **not** exist, `Load` will:
-  1. **Process** your `defaultCfg` (auto-generate secrets, expand paths, etc.).
+  1. **Process** your `defaultCfg` (auto-generating secrets, expanding paths, and validating endpoints and usernames).
   2. **Save** that as a brand-new `config.yaml`.
   3. Return the processed `defaultCfg`.
 
 - If `config.yaml` **does** exist, `Load` will:
   1. Read and unmarshal the existing YAML.
-  2. **Process** it (auto-generate secrets if empty, expand paths, etc.).
+  2. **Process** it (auto-generating secrets if empty, expanding paths, and validating endpoints and usernames).
   3. Return the processed config.
 
 #### Saving a Config File
@@ -109,37 +134,42 @@ if err != nil {
 
 ### Processing Config Fields
 
-When you call `Load` (or manually call `config.Process`), the following rules apply to fields in a struct:
+When you call `Load` (or manually invoke `config.Process`), the package looks for a `variables` block in your configuration. If found, it processes the following sub-sections:
 
-- **`<Name>Secret`** (string): If empty, generates a 32-byte random JWT secret, hex-encoded.
-- **`<Name>Path`** (string): Expands `~` to the user’s home directory.
-- **`<Name>User`** (string): Must pass a simple Linux username check.
-- **`<Name>URL`** (string): Must be a valid URL with scheme and host.
+- **endpoints:**  
+  Each value is validated as a well-formed URL (the URL must have both a scheme and host).
 
-If you only have a generic map (e.g., `map[string]interface{}`), then these rules do not apply automatically. However, you can still call helper functions (like `config.ExpandPath`, `config.ValidateUsername`) manually if needed.
+- **secrets:**  
+  If a secret value is empty, a new 32-byte JWT secret is generated and inserted.
+
+- **users:**  
+  Each value is validated as a Linux-style username.
+
+- **paths:**  
+  Each value is expanded, for example replacing a leading `~` with the user’s home directory.
 
 ### Other Helpers
 
 - **`GenerateJWTSecret()`**  
-  Creates a 32-byte secure random key, returns hex-encoded string.
+  Creates a 32-byte secure random key and returns it as a hex-encoded string.
   
 - **`ExpandPath(path string)`**  
-  Expands a `~` to the user’s home directory, e.g. `"~/myapp" -> "/Users/joe/myapp"`.
+  Expands a leading `~` to the user’s home directory (e.g. `"~/myapp"` becomes `"/Users/joe/myapp"`).
   
 - **`ValidateUsername(username string)`**  
-  Validates against Linux-style username rules. Returns an error if invalid.
+  Validates the username against Linux-style rules. Returns an error if the username is invalid.
   
 - **`ValidateURL(url string)`**  
-  Checks if the string is a valid URL with both scheme and host set.
-
+  Checks that the string is a valid URL with both a scheme and host.
+  
 - **`CopyProperty(src, srcField, dst, dstField)`**  
-  Copies a named field from one struct to another (both must be pointer-to-struct). Useful if you prefer a more structured approach (rather than map usage).
+  Copies a property from one configuration to another. This function supports nested fields using dot‑notation (for example, `"Variables.Secrets.api"`).
 
 ---
 
 ## CLI Usage
 
-The `config` CLI mirrors much of this functionality. You can see usage by simply running:
+The `config` CLI mirrors much of the functionality available in the package. You can see usage by simply running:
 
 ```bash
 $ config -h
@@ -167,10 +197,37 @@ Commands:
 
   copy      Copy a property from one YAML config to another
               -src string      Source config file
-              -srcField string Source field name
+              -srcField string Source field name (supports nested dot‑notation)
               -dst string      Destination config file
-              -dstField string Destination field name
+              -dstField string Destination field name (supports nested dot‑notation)
 ```
+
+---
+
+## Processing via `variables` Section
+
+This package processes configuration fields using a dedicated `variables` section. Your configuration should include a block like the following:
+
+```yaml
+variables:
+  endpoints:
+    user: http://localhost:9000/callback
+  secrets:
+    root: ""
+  users:
+    owner: root
+  paths:
+    database: ~/llmfs.db
+```
+
+Within this section:
+
+- **endpoints:** Each value is validated as a well-formed URL.
+- **secrets:** Empty secret values are replaced with a generated 32-byte JWT secret (hex-encoded).
+- **users:** Each value is validated as a Linux-style username.
+- **paths:** Each value is expanded (for example, a leading `~` is replaced with the user’s home directory).
+
+These processing rules are applied automatically when you call `Load` or `Process`.
 
 ---
 

@@ -6,177 +6,152 @@ import (
 	"testing"
 )
 
+// TestProcess_SimpleStruct verifies that a configuration defined as a struct with a Variables field
+// is processed correctly.
 func TestProcess_SimpleStruct(t *testing.T) {
+	type Variables struct {
+		Endpoints map[string]string `yaml:"endpoints"`
+		Secrets   map[string]string `yaml:"secrets"`
+		Users     map[string]string `yaml:"users"`
+		Paths     map[string]string `yaml:"paths"`
+	}
 	type myConfig struct {
-		TestSecret string
-		TestPath   string
-		TestUser   string
-		TestURL    string
-		Ignored    int
+		Variables Variables `yaml:"variables"`
+		Ignored   int       `yaml:"ignored"`
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("Failed to get home directory: %v", err)
 	}
 
 	cfg := myConfig{
-		TestSecret: "",
-		TestPath:   "~/some/path",
-		TestUser:   "myuser",
-		TestURL:    "http://example.com",
-		Ignored:    42,
+		Variables: Variables{
+			Endpoints: map[string]string{
+				"callback": "http://example.com/callback",
+			},
+			Secrets: map[string]string{
+				"api": "",
+			},
+			Users: map[string]string{
+				"owner": "myuser",
+			},
+			Paths: map[string]string{
+				"database": "~/some/path",
+			},
+		},
+		Ignored: 42,
 	}
 
 	if err := Process(&cfg); err != nil {
 		t.Fatalf("Process returned error: %v", err)
 	}
 
-	// Secret should be auto-generated if empty
-	if cfg.TestSecret == "" {
-		t.Errorf("Expected TestSecret to be generated, got empty string")
+	// The secret should be generated.
+	if cfg.Variables.Secrets["api"] == "" {
+		t.Errorf("Expected Secrets['api'] to be generated, got empty string")
 	}
 
-	// Path should be expanded
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("Failed to get home dir: %v", err)
-	}
-	expected := filepath.Join(home, "some/path")
-	if cfg.TestPath != expected {
-		t.Errorf("Expected TestPath = %q, got %q", expected, cfg.TestPath)
+	// The path should be expanded.
+	expectedPath := filepath.Join(home, "some/path")
+	if cfg.Variables.Paths["database"] != expectedPath {
+		t.Errorf("Expected Paths['database'] to be %q, got %q", expectedPath, cfg.Variables.Paths["database"])
 	}
 
-	// User & URL shouldn't have changed if they are valid
-	if cfg.TestUser != "myuser" {
-		t.Errorf("Expected TestUser to remain %q, got %q", "myuser", cfg.TestUser)
+	// Endpoints and users should remain unchanged.
+	if cfg.Variables.Endpoints["callback"] != "http://example.com/callback" {
+		t.Errorf("Expected Endpoints['callback'] to remain unchanged, got %q", cfg.Variables.Endpoints["callback"])
 	}
-	if cfg.TestURL != "http://example.com" {
-		t.Errorf("Expected TestURL to remain http://example.com, got %q", cfg.TestURL)
+	if cfg.Variables.Users["owner"] != "myuser" {
+		t.Errorf("Expected Users['owner'] to remain unchanged, got %q", cfg.Variables.Users["owner"])
 	}
 }
 
-func TestProcess_NestedStruct(t *testing.T) {
-	type subConfig struct {
-		DbSecret string
-		DbURL    string
-	}
-
-	type topConfig struct {
-		Name         string
-		Nested       subConfig
-		AnotherValue int
-	}
-
-	cfg := topConfig{
-		Name: "top-level",
-		Nested: subConfig{
-			DbSecret: "",
-			DbURL:    "https://mydb.local",
-		},
-		AnotherValue: 100,
+// TestProcess_NoVariables confirms that if there is no "variables" section, Process is a no-op.
+func TestProcess_NoVariables(t *testing.T) {
+	cfg := struct {
+		Name string `yaml:"name"`
+	}{
+		Name: "test",
 	}
 
 	if err := Process(&cfg); err != nil {
-		t.Fatalf("Process returned error for nested struct: %v", err)
+		t.Fatalf("Process returned error: %v", err)
 	}
-
-	// DbSecret should be auto-generated
-	if cfg.Nested.DbSecret == "" {
-		t.Error("Expected DbSecret to be generated in nested struct, got empty")
-	}
-
-	// URL is valid, should remain unchanged
-	if cfg.Nested.DbURL != "https://mydb.local" {
-		t.Errorf("Expected DbURL to remain unchanged, got %q", cfg.Nested.DbURL)
+	if cfg.Name != "test" {
+		t.Errorf("Expected Name to remain 'test', got %q", cfg.Name)
 	}
 }
 
+// TestProcess_NestedMap uses a map configuration with a "variables" key and tests that:
+// - an invalid username in variables.users returns an error,
+// - an empty secret in variables.secrets is generated,
+// - a path in variables.paths is expanded.
 func TestProcess_NestedMap(t *testing.T) {
-	// A generic map with nested maps and some suffix-based keys
 	cfg := map[string]interface{}{
-		"userURL":  "http://example.org",
-		"somePath": "~/myapp",
-		"nested": map[string]interface{}{
-			"innerSecret": "",
-			"invalidUser": "INVALID", // This should fail validation
+		"variables": map[string]interface{}{
+			"endpoints": map[string]interface{}{
+				"service": "http://service.example.com",
+			},
+			"secrets": map[string]interface{}{
+				"token": "",
+			},
+			"users": map[string]interface{}{
+				"admin": "INVALID", // invalid username – should trigger an error
+			},
+			"paths": map[string]interface{}{
+				"config": "~/config",
+			},
 		},
 	}
 
-	err := Process(cfg) // pass map directly
+	err := Process(cfg)
 	if err == nil {
 		t.Errorf("Expected error for invalid username, got nil")
 	}
 
-	// Fix the invalid user, try again
-	cfg["nested"].(map[string]interface{})["invalidUser"] = "validuser"
+	// Fix the invalid username and try again.
+	vars := cfg["variables"].(map[string]interface{})
+	users := vars["users"].(map[string]interface{})
+	users["admin"] = "adminuser"
 
 	err = Process(cfg)
 	if err != nil {
-		t.Fatalf("Process returned error after fixing user: %v", err)
+		t.Fatalf("Process returned error after fixing username: %v", err)
 	}
 
-	// userURL is valid, so it should remain the same
-	if got := cfg["userURL"]; got != "http://example.org" {
-		t.Errorf("Expected userURL = http://example.org, got %v", got)
+	// Verify endpoints remain unchanged.
+	endpoints := vars["endpoints"].(map[string]interface{})
+	if endpoints["service"] != "http://service.example.com" {
+		t.Errorf("Expected endpoint 'service' to remain unchanged, got %v", endpoints["service"])
 	}
 
-	// somePath should have been expanded
+	// Verify that the secret is generated.
+	secrets := vars["secrets"].(map[string]interface{})
+	if secrets["token"] == "" {
+		t.Errorf("Expected secret 'token' to be generated, got empty string")
+	}
+
+	// Verify that the path is expanded.
 	home, err := os.UserHomeDir()
 	if err != nil {
-		t.Fatalf("Failed to get home dir: %v", err)
+		t.Fatalf("Failed to get home directory: %v", err)
 	}
-	expected := filepath.Join(home, "myapp")
-	if got := cfg["somePath"]; got != expected {
-		t.Errorf("Expected somePath = %q, got %v", expected, got)
-	}
-
-	// innerSecret should have been generated
-	if cfg["nested"].(map[string]interface{})["innerSecret"] == "" {
-		t.Errorf("Expected innerSecret to be generated, got empty string")
+	expectedConfigPath := filepath.Join(home, "config")
+	paths := vars["paths"].(map[string]interface{})
+	if paths["config"] != expectedConfigPath {
+		t.Errorf("Expected path 'config' to be %q, got %v", expectedConfigPath, paths["config"])
 	}
 }
 
-func TestProcess_SliceOfMaps(t *testing.T) {
-	cfg := []interface{}{
-		map[string]interface{}{
-			"backendURL": "http://backend.local",
-			"someSecret": "",
-		},
-		map[string]interface{}{
-			"dataPath": "~/data",
-			"someUser": "alice",
-		},
-	}
-
-	err := Process(&cfg)
-	if err != nil {
-		t.Fatalf("Process returned error for slice of maps: %v", err)
-	}
-
-	// In first map: someSecret should be generated
-	first := cfg[0].(map[string]interface{})
-	if first["someSecret"] == "" {
-		t.Error("Expected 'someSecret' to be generated, got empty")
-	}
-	// backendURL is valid, so no change
-	if first["backendURL"] != "http://backend.local" {
-		t.Errorf("Expected backendURL = http://backend.local, got %v", first["backendURL"])
-	}
-
-	// In second map: dataPath should be expanded, someUser is valid user
-	second := cfg[1].(map[string]interface{})
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("Failed to get home dir: %v", err)
-	}
-	expected := filepath.Join(home, "data")
-	if second["dataPath"] != expected {
-		t.Errorf("Expected dataPath = %q, got %v", expected, second["dataPath"])
-	}
-	if second["someUser"] != "alice" {
-		t.Errorf("Expected someUser to remain 'alice', got %v", second["someUser"])
-	}
-}
-
+// TestProcess_InvalidURL confirms that an invalid URL in variables.endpoints returns an error.
 func TestProcess_InvalidURL(t *testing.T) {
 	cfg := map[string]interface{}{
-		"badURL": "://invalid-url",
+		"variables": map[string]interface{}{
+			"endpoints": map[string]interface{}{
+				"bad": "://invalid-url",
+			},
+		},
 	}
 	err := Process(cfg)
 	if err == nil {
@@ -184,10 +159,42 @@ func TestProcess_InvalidURL(t *testing.T) {
 	}
 }
 
+// TestProcess_NilPointer ensures that passing a nil pointer to Process does not cause a crash.
 func TestProcess_NilPointer(t *testing.T) {
-	// A nil pointer should just no-op and not crash
 	var ptr *string
 	if err := Process(ptr); err != nil {
 		t.Errorf("Process(nil pointer) returned unexpected error: %v", err)
+	}
+}
+
+// TestProcess_Slice demonstrates processing when a slice of maps (each with a variables section) is passed.
+// Since the new Process function looks for a top-level "variables" key, we must process each slice element.
+func TestProcess_Slice(t *testing.T) {
+	cfg := []interface{}{
+		map[string]interface{}{
+			"variables": map[string]interface{}{
+				"secrets": map[string]interface{}{
+					"key": "",
+				},
+			},
+		},
+		map[string]interface{}{
+			"name": "test",
+		},
+	}
+	// Process each element in the slice.
+	for _, item := range cfg {
+		if err := Process(item); err != nil {
+			t.Fatalf("Process returned error for slice element: %v", err)
+		}
+	}
+	// Check that in the first element the secret was generated.
+	first := cfg[0].(map[string]interface{})
+	vars, ok := first["variables"].(map[string]interface{})
+	if ok {
+		secrets, ok := vars["secrets"].(map[string]interface{})
+		if ok && secrets["key"] == "" {
+			t.Errorf("Expected secret 'key' to be generated in slice element, got empty")
+		}
 	}
 }
