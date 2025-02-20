@@ -148,7 +148,7 @@ import (
 )
 
 // A simple default YAML configuration.
-const defaultYAML = []byte(`
+var defaultYAML = []byte(`
 variables:
   secrets:
     root: ""
