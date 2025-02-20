@@ -1,6 +1,6 @@
 # config
 
-`config` is a Go package and CLI tool for loading, processing, and saving YAML configuration files for [LLMFS](https://github.com/dropsite-ai/llmfs).
+Go package and CLI tool for processing YAML configuration files for [LLMFS](https://github.com/dropsite-ai/llmfs).
 
 ## Format
 
