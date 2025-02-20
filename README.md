@@ -148,11 +148,11 @@ import (
 )
 
 // A simple default YAML configuration.
-const defaultYAML = `
+const defaultYAML = []byte(`
 variables:
   secrets:
     root: ""
-`
+`)
 
 func main() {
 	// Load configuration from a YAML file, using the default if not found.
