@@ -6,37 +6,35 @@ import (
 	"testing"
 )
 
-func TestExpandPath_WithTilde(t *testing.T) {
+func TestExpandPath(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		t.Fatalf("Failed to get home dir: %v", err)
+		t.Skip("Skipping path expansion test, no home dir")
 	}
 
-	expanded, err := ExpandPath("~")
+	p, err := ExpandPath("~")
 	if err != nil {
-		t.Fatalf("ExpandPath returned error: %v", err)
+		t.Fatalf("ExpandPath error: %v", err)
 	}
-	if expanded != home {
-		t.Errorf("Expected %q, got %q", home, expanded)
+	if p != home {
+		t.Errorf("Expected %q, got %q", home, p)
 	}
 
-	expanded, err = ExpandPath("~/folder")
+	p2, err := ExpandPath("~/folder")
 	if err != nil {
-		t.Fatalf("ExpandPath returned error: %v", err)
+		t.Fatalf("ExpandPath error: %v", err)
 	}
-	expected := filepath.Join(home, "folder")
-	if expanded != expected {
-		t.Errorf("Expected %q, got %q", expected, expanded)
+	want2 := filepath.Join(home, "folder")
+	if p2 != want2 {
+		t.Errorf("Expected %q, got %q", want2, p2)
 	}
-}
 
-func TestExpandPath_WithoutTilde(t *testing.T) {
-	path := "/some/path"
-	expanded, err := ExpandPath(path)
+	// Non-tilde path remains unchanged
+	p3, err := ExpandPath("/usr/local")
 	if err != nil {
-		t.Fatalf("ExpandPath returned error: %v", err)
+		t.Fatalf("ExpandPath error: %v", err)
 	}
-	if expanded != path {
-		t.Errorf("Expected %q, got %q", path, expanded)
+	if p3 != "/usr/local" {
+		t.Errorf("Expected '/usr/local', got %q", p3)
 	}
 }

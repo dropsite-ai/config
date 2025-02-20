@@ -5,11 +5,11 @@ import (
 	"encoding/hex"
 )
 
-// GenerateJWTSecret creates a secure random secret encoded as hex.
-func GenerateJWTSecret() (string, error) {
-	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
+// generateJWTSecret returns a 32-byte cryptographically random key in hex.
+func generateJWTSecret() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	return hex.EncodeToString(bytes), nil
+	return hex.EncodeToString(b), nil
 }

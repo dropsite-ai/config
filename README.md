@@ -1,11 +1,110 @@
 # config
 
-A flexible YAML configuration utility for Go, with optional CLI usage. This repository provides:
+`config` is a Go package and CLI tool for loading, processing, and saving YAML configuration files for [LLMFS](https://github.com/dropsite-ai/llmfs).
 
-- **Programmatic usage** to load, save, process, and validate YAML configs within your Go code.
-- A **CLI** tool (`config`) for simple config file manipulation.
+## Format
 
----
+The configuration file is written in YAML and may have any fields with two optional sections: **variables** and **callbacks**.
+
+### Variables
+
+Under the `variables` key, you define mappings for endpoints, secrets, users, and paths.
+
+- **endpoints:**  
+  A mapping of endpoint names to their corresponding URL strings. Each URL must include a valid scheme (like `http` or `https`) and a host.
+
+  ```yaml
+  endpoints:
+    service1: "http://example.com"
+  ```
+
+- **secrets:**  
+  A mapping of secret names to their values. If a secret is left empty (`""`), the loader automatically generates a new secret (a 64-character hexadecimal string).  
+ 
+  ```yaml
+  secrets:
+    secret1: ""          # This is replaced with a generated secret.
+    secret2: "mysecret"  # This secret remains unchanged.
+  ```
+
+- **users:**  
+  A mapping of user keys to their usernames. Usernames are validated using Linux-style naming rules (must start with a lowercase letter or underscore, and contain only lowercase letters, numbers, underscores, or dashes; up to 32 characters).
+
+  ```yaml
+  users:
+    user1: "root"
+  ```
+
+- **paths:**  
+  A mapping of path keys to filesystem paths. Paths starting with a tilde (`~`) will be automatically expanded to the current user’s home directory.
+
+  ```yaml
+  paths:
+    path1: "/.llmfs.yml"
+    path2: "~/folder"
+  ```
+
+### Callbacks
+
+The `callbacks` section defines an array of callback definitions. Each callback must include the following fields:
+
+- **name:**  
+  A unique identifier for the callback.
+
+- **events:**  
+  A list of event names that trigger the callback.
+
+- **timing:**  
+  Specifies when the callback runs. Only two values are allowed: `"pre"` or `"post"`.
+
+- **target:**  
+  A mapping that describes the callback’s target. It includes:
+  
+  - **type:** The target type, which can be either `"file"` or `"directory"`.
+  - **path:** The filesystem path to the target.
+
+- **endpoints:**  
+  A list of endpoint keys (defined under `variables.endpoints`) associated with the callback.
+
+Example callback configuration:
+
+```yaml
+callbacks:
+  - name: "callback1"
+    events: ["event1", "event2"]
+    timing: "pre"
+    target:
+      type: "file"
+      path: "some/path"
+    endpoints: ["service1"]
+```
+
+### Overall Structure
+
+A complete configuration file might look like this:
+
+```yaml
+variables:
+  endpoints:
+    service1: "http://example.com"
+  secrets:
+    secret1: ""
+    secret2: "existingsecret"
+  users:
+    user1: "root"
+  paths:
+    path1: "~"
+    path2: "~/folder"
+
+callbacks:
+  - name: "callback1"
+    events: ["event1", "event2"]
+    timing: "pre"
+    target:
+      type: "file"
+      path: "some/path"
+    endpoints: ["service1"]
+```
 
 ## Installation
 
@@ -34,203 +133,76 @@ cd config
 go build -o config cmd/main.go
 ```
 
----
-
 ## Programmatic Usage
 
-This package is designed to simplify reading and writing YAML configuration files in Go, with additional logic for secrets, path expansion, username validation, and URL validation.
-
-### Importing
+You can use the package directly in your Go code to load and process YAML configuration files. For example:
 
 ```go
-import "github.com/dropsite-ai/config"
-```
+package main
 
-### Loading and Saving Configs
+import (
+	"fmt"
+	"log"
 
-#### Defining Your Config Struct
+	"github.com/dropsite-ai/config"
+)
 
-To take advantage of automatic processing, structure your configuration to include a dedicated `variables` section. Within this section you can define maps for endpoints, secrets, users, and paths:
+func main() {
+	// Load configuration from a YAML file.
+	doc, vars, callbacks, err := config.Load("path/to/config.yaml")
+	if err != nil {
+		log.Fatalf("Error loading config: %v", err)
+	}
 
-```go
-type Variables struct {
-    Endpoints map[string]string `yaml:"endpoints"`
-    Secrets   map[string]string `yaml:"secrets"`
-    Users     map[string]string `yaml:"users"`
-    Paths     map[string]string `yaml:"paths"`
-}
+	// Display the processed configuration.
+	fmt.Printf("Processed Variables:\n%+v\n", vars)
+	fmt.Printf("Processed Callbacks:\n%+v\n", callbacks)
 
-type MyAppConfig struct {
-    Variables Variables `yaml:"variables"`
-    LogLevel  string    `yaml:"logLevel"`
-}
-```
-
-#### YAML Configuration Example
-
-```yaml
-variables:
-  endpoints:
-    user: http://localhost:9000/callback
-  secrets:
-    root: ""
-  users:
-    owner: root
-  paths:
-    database: ~/llmfs.db
-logLevel: debug
-```
-
-In this configuration:
-
-- **endpoints:** Each value is validated as a well-formed URL.
-- **secrets:** Any empty secret value is replaced with a newly generated 32-byte JWT secret (hex-encoded).
-- **users:** Each value is validated as a Linux-style username.
-- **paths:** Each value is expanded (e.g. a leading `~` is replaced with the user’s home directory).
-
-> **Note:** If your configuration does not include a `variables` section, then these automatic validations and transformations are not applied. You can still use helper functions (such as `ExpandPath` or `ValidateUsername`) manually.
-
-#### Loading a Config File
-
-```go
-// Default config if file doesn't exist:
-defaultCfg := MyAppConfig{
-    LogLevel: "info",
-    Variables: Variables{
-        Endpoints: map[string]string{"user": "http://localhost:9000/callback"},
-        Secrets:   map[string]string{"root": ""},
-        Users:     map[string]string{"owner": "root"},
-        Paths:     map[string]string{"database": "~/llmfs.db"},
-    },
-}
-
-// Load or create the YAML file:
-cfg, err := config.Load("config.yaml", defaultCfg)
-if err != nil {
-    panic(err)
+	// Save the updated document back to the file.
+	if err := config.Save("path/to/config.yaml", doc); err != nil {
+		log.Fatalf("Error saving config: %v", err)
+	}
 }
 ```
-
-- If `config.yaml` does **not** exist, `Load` will:
-  1. **Process** your `defaultCfg` (auto-generating secrets, expanding paths, and validating endpoints and usernames).
-  2. **Save** that as a brand-new `config.yaml`.
-  3. Return the processed `defaultCfg`.
-
-- If `config.yaml` **does** exist, `Load` will:
-  1. Read and unmarshal the existing YAML.
-  2. **Process** it (auto-generating secrets if empty, expanding paths, and validating endpoints and usernames).
-  3. Return the processed config.
-
-#### Saving a Config File
-
-After modifying your config in code, you can save it:
-
-```go
-err = config.Save("config.yaml", cfg)
-if err != nil {
-    panic(err)
-}
-```
-
-### Processing Config Fields
-
-When you call `Load` (or manually invoke `config.Process`), the package looks for a `variables` block in your configuration. If found, it processes the following sub-sections:
-
-- **endpoints:**  
-  Each value is validated as a well-formed URL (the URL must have both a scheme and host).
-
-- **secrets:**  
-  If a secret value is empty, a new 32-byte JWT secret is generated and inserted.
-
-- **users:**  
-  Each value is validated as a Linux-style username.
-
-- **paths:**  
-  Each value is expanded, for example replacing a leading `~` with the user’s home directory.
-
-### Other Helpers
-
-- **`GenerateJWTSecret()`**  
-  Creates a 32-byte secure random key and returns it as a hex-encoded string.
-  
-- **`ExpandPath(path string)`**  
-  Expands a leading `~` to the user’s home directory (e.g. `"~/myapp"` becomes `"/Users/joe/myapp"`).
-  
-- **`ValidateUsername(username string)`**  
-  Validates the username against Linux-style rules. Returns an error if the username is invalid.
-  
-- **`ValidateURL(url string)`**  
-  Checks that the string is a valid URL with both a scheme and host.
-  
-- **`CopyProperty(src, srcField, dst, dstField)`**  
-  Copies a property from one configuration to another. This function supports nested fields using dot‑notation (for example, `"Variables.Secrets.api"`).
-
----
 
 ## CLI Usage
 
-The `config` CLI mirrors much of the functionality available in the package. You can see usage by simply running:
+The CLI tool (`config`) provides two main commands: `load` and `copy`.
+
+### Load Command
+
+Loads a configuration file, processes it, and displays the YAML document along with the processed variables and callbacks.
+
+#### Example
 
 ```bash
-$ config -h
-Usage: config <command> [options]
-
-Commands:
-  load      Load a YAML config from file (creates file if not exists)
-              -file string   Path to config file
-
-  save      Save/update a YAML config file.
-              -file string    Path to config file
-              -update string  Update a field in the form key=value (can be repeated)
-
-  process   Process a YAML config from file and print the processed result
-              -file string   Path to config file
-
-  generate  Generate a JWT secret and print it
-
-  expand    Expand a given path (handles "~")
-              -path string   Path to expand
-
-  validate  Validate a value as username or URL
-              -type string   "username" or "url"
-              -value string  Value to validate
-
-  copy      Copy a property from one YAML config to another
-              -src string      Source config file
-              -srcField string Source field name (supports nested dot‑notation)
-              -dst string      Destination config file
-              -dstField string Destination field name (supports nested dot‑notation)
+config load -config path/to/config.yaml
 ```
 
----
+**Output:**  
+- The complete YAML document (including any modifications, such as generated secrets).  
+- Processed variables and callback definitions printed to the console.
 
-## Processing via `variables` Section
+### Copy Command
 
-This package processes configuration fields using a dedicated `variables` section. Your configuration should include a block like the following:
+Copies a value from one YAML file to another using dot-notation to specify the source and destination fields.
 
-```yaml
-variables:
-  endpoints:
-    user: http://localhost:9000/callback
-  secrets:
-    root: ""
-  users:
-    owner: root
-  paths:
-    database: ~/llmfs.db
+#### Example
+
+```bash
+config copy -srcfile src.yaml -srcpath variables.secrets.secret1 \
+            -dstfile dst.yaml -dstpath config.secret
 ```
 
-Within this section:
+**Flags:**
 
-- **endpoints:** Each value is validated as a well-formed URL.
-- **secrets:** Empty secret values are replaced with a generated 32-byte JWT secret (hex-encoded).
-- **users:** Each value is validated as a Linux-style username.
-- **paths:** Each value is expanded (for example, a leading `~` is replaced with the user’s home directory).
+- `-srcfile`: Path to the source YAML file.
+- `-srcpath`: Dot-notation path to the field in the source YAML.
+- `-dstfile`: Path to the destination YAML file.
+- `-dstpath`: Dot-notation path where the value should be written in the destination YAML.
 
-These processing rules are applied automatically when you call `Load` or `Process`.
-
----
+This command reads the specified field from the source, updates the destination YAML file at the given path, and writes the changes back to disk.
 
 ## License
 
-[MIT](LICENSE)
+This project is licensed under the [MIT License](LICENSE).

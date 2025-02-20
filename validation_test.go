@@ -2,55 +2,42 @@ package config
 
 import "testing"
 
-func TestValidateUsername_Valid(t *testing.T) {
-	validUsernames := []string{
-		"a",
-		"user",
-		"abc_123",
-		"a123456789012345678901234567890", // 31 characters after the first
+func TestValidateUsername(t *testing.T) {
+	cases := []struct {
+		name    string
+		wantErr bool
+	}{
+		{"root", false},
+		{"_system", false},
+		{"user123", false},
+		{"UPPER", true},
+		{"", true},
+		{"123abc", true},
 	}
-	for _, username := range validUsernames {
-		if err := ValidateUsername(username); err != nil {
-			t.Errorf("Expected username %q to be valid, got error: %v", username, err)
+
+	for _, c := range cases {
+		err := validateUsername(c.name)
+		if (err != nil) != c.wantErr {
+			t.Errorf("validateUsername(%q) => error=%v, wantErr=%v", c.name, err, c.wantErr)
 		}
 	}
 }
 
-func TestValidateUsername_Invalid(t *testing.T) {
-	invalidUsernames := []string{
-		"User",  // uppercase letter not allowed
-		"1user", // must start with letter or underscore
-		"a very long username that exceeds the limit",
-		"invalid!",
+func TestValidateURL(t *testing.T) {
+	cases := []struct {
+		url     string
+		wantErr bool
+	}{
+		{"http://example.com", false},
+		{"https://example.com/path", false},
+		{"://no-scheme", true},
+		{"not-a-url", true},
+		{"http://", true},
 	}
-	for _, username := range invalidUsernames {
-		if err := ValidateUsername(username); err == nil {
-			t.Errorf("Expected username %q to be invalid", username)
-		}
-	}
-}
-
-func TestValidateURL_Valid(t *testing.T) {
-	validURLs := []string{
-		"http://example.com",
-		"https://example.com/path",
-	}
-	for _, u := range validURLs {
-		if err := ValidateURL(u); err != nil {
-			t.Errorf("Expected URL %q to be valid, got error: %v", u, err)
-		}
-	}
-}
-
-func TestValidateURL_Invalid(t *testing.T) {
-	invalidURLs := []string{
-		"http://",
-		"not a url",
-		"://missing.scheme.com",
-	}
-	for _, u := range invalidURLs {
-		if err := ValidateURL(u); err == nil {
-			t.Errorf("Expected URL %q to be invalid", u)
+	for _, c := range cases {
+		err := validateURL(c.url)
+		if (err != nil) != c.wantErr {
+			t.Errorf("validateURL(%q) => error=%v, wantErr=%v", c.url, err, c.wantErr)
 		}
 	}
 }
