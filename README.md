@@ -147,9 +147,16 @@ import (
 	"github.com/dropsite-ai/config"
 )
 
+// A simple default YAML configuration.
+const defaultYAML = `
+variables:
+  secrets:
+    root: ""
+`
+
 func main() {
-	// Load configuration from a YAML file.
-	doc, vars, callbacks, err := config.Load("path/to/config.yaml")
+	// Load configuration from a YAML file, using the default if not found.
+	doc, vars, callbacks, err := config.Load("path/to/config.yaml", defaultYAML)
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
