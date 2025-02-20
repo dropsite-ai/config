@@ -44,7 +44,7 @@ func loadCmd(args []string) {
 		os.Exit(1)
 	}
 
-	doc, vars, callbacks, err := config.Load(*configPath)
+	doc, vars, callbacks, err := config.Load(*configPath, []byte{})
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}

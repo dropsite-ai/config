@@ -134,13 +134,19 @@ func ProcessVariables(doc *yaml.Node, prefix string) (*Variables, error) {
 	return &vars, nil
 }
 
-// Load opens the YAML file at the given path, parses it into a document node,
+// Load opens the YAML file at the given path, or if the file is not found,
+// uses the provided defaultYAML string. It then parses the content into a document node,
 // processes variables and callbacks, and returns the document, Variables, and callbacks.
-func Load(path string) (*yaml.Node, *Variables, []CallbackDefinition, error) {
+func Load(path string, defaultYAML []byte) (*yaml.Node, *Variables, []CallbackDefinition, error) {
 	yamlBytes, err := os.ReadFile(path)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("reading YAML file: %w", err)
+		if os.IsNotExist(err) && len(defaultYAML) != 0 {
+			yamlBytes = defaultYAML
+		} else {
+			return nil, nil, nil, fmt.Errorf("reading YAML file: %w", err)
+		}
 	}
+
 	doc, err := yamledit.Parse(yamlBytes)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("parsing YAML: %w", err)

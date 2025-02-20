@@ -370,7 +370,7 @@ callbacks:
 	tmpFile.Close()
 
 	// Call Load to parse the file.
-	_, vars, callbacks, err := Load(tmpFile.Name())
+	_, vars, callbacks, err := Load(tmpFile.Name(), []byte{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -415,7 +415,7 @@ variables:
 	tmpFile.Close()
 
 	// Load the document (which will update secret1 if empty).
-	doc, vars, _, err := Load(tmpFile.Name())
+	doc, vars, _, err := Load(tmpFile.Name(), []byte{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -457,5 +457,37 @@ variables:
 	}
 	if savedSecrets["secret2"] != "existingsecret" {
 		t.Errorf("expected secret2 to remain unchanged, got %q", savedSecrets["secret2"])
+	}
+}
+
+func TestLoadUsesDefaultYAML(t *testing.T) {
+	// Create a non-existent file path.
+	tmpDir := t.TempDir()
+	nonExistentFile := filepath.Join(tmpDir, "nonexistent.yaml")
+
+	// Define a minimal default YAML string.
+	defaultYAML := []byte(`
+variables:
+  endpoints:
+    service1: "http://example.com"
+`)
+
+	// Call Load with the non-existent file and the default YAML.
+	_, vars, callbacks, err := Load(nonExistentFile, defaultYAML)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	// Check that the default YAML was used by verifying a known field.
+	if vars == nil || vars.Endpoints == nil {
+		t.Fatal("expected variables and endpoints to be non-nil")
+	}
+	if ep, ok := vars.Endpoints["service1"]; !ok || ep != "http://example.com" {
+		t.Errorf("expected service1 endpoint to be 'http://example.com', got %q", ep)
+	}
+
+	// Since the default YAML doesn't define callbacks, they should be empty.
+	if len(callbacks) != 0 {
+		t.Errorf("expected 0 callbacks, got %d", len(callbacks))
 	}
 }
